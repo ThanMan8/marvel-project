@@ -29,7 +29,7 @@ data "aws_iam_policy_document" "execution_role_policy" {
       "arn:aws:s3:::${var.s3_bucket_name}/*"
     ]
   }
-   statement {
+  statement {
     effect = "Allow"
     actions = [
       "s3:PutObject",
