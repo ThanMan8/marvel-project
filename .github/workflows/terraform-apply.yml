@@ -12,17 +12,17 @@ jobs:
   terraform:
     runs-on: ubuntu-latest
     env:
-      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
-      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
-      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: us-east-1
+
 
     # Use the Bash shell regardless whether the GitHub Actions runner is ubuntu-latest, macos-latest, or windows-latest
     # Set the working directory to main for the config files
     defaults:
       run:
         shell: bash
-        working-directory: ./github_azure
+        working-directory: ./creating-airflow
 
     steps:
     # Checkout the repository to the GitHub Actions runner
@@ -37,9 +37,12 @@ jobs:
       run: terraform init
 
     # Run a terraform plan for pull requests only
-    # - name: Terraform Apply
-    #   id: apply
-    #   run: terraform apply -auto-approve
+    - name: Terraform Apply
+      id: apply
+      run: terraform apply -auto-approve
  
-    
+    # This upload the file from dags folder to my s3 bucket
+    - name: Sync DAGs to S3
+      run:  aws s3 sync ./dags/ s3://airflow-bucket-marvel/dags/ --delete
+      working-directory: .
     
