@@ -29,6 +29,18 @@ data "aws_iam_policy_document" "execution_role_policy" {
       "arn:aws:s3:::${var.s3_bucket_name}/*"
     ]
   }
+   statement {
+    effect = "Allow"
+    actions = [
+      "s3:PutObject",
+      "s3:GetObject",
+      "s3:ListBucket"
+    ]
+    resources = [
+      "arn:aws:s3:::my-upload-data-bucket",
+      "arn:aws:s3:::my-upload-data-bucket/*"
+    ]
+  }
   statement {
     effect = "Allow"
     actions = [
