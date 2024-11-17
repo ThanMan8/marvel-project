@@ -54,4 +54,4 @@ jobs:
  
     # This upload the file from dags folder to my s3 bucket
     - name: Sync DAGs to S3
-      run:  aws s3 sync dags/ s3://airflow-bucket-marvel/dags/ --delete
+      run:  aws s3 sync Marvel-airflow-project/dags/ s3://airflow-bucket-marvel/dags/ --delete
