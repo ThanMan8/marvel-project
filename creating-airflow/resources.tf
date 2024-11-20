@@ -87,10 +87,11 @@ resource "aws_subnet" "private" {
   for_each                = var.private_subnets
   vpc_id                  = aws_vpc.vpc-airflow.id
   cidr_block              = each.value
+  availability_zone       = element(data.aws_availability_zones.available.names, index(keys(var.private_subnets), each.key))
   map_public_ip_on_launch = true
 
   tags = {
-    Name = "${each.key}-subnet"
+    name = "${each.key}-subnet"
   }
 }
 
