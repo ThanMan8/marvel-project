@@ -80,7 +80,7 @@ resource "aws_vpc" "vpc-airflow" {
   cidr_block = var.vpc_cidr_block
 
   tags = {
-    name = "vpc-airflow-dev" }
+  name = "vpc-airflow-dev" }
 }
 
 resource "aws_subnet" "private" {
