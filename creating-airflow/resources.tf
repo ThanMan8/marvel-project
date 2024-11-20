@@ -80,7 +80,7 @@ resource "aws_vpc" "vpc-airflow" {
   cidr_block = var.vpc_cidr_block
 
   tags = {
-  name = "vpc-airflow-dev" }
+    name = "vpc-airflow-dev" }
 }
 
 resource "aws_subnet" "private" {
@@ -89,9 +89,9 @@ resource "aws_subnet" "private" {
   cidr_block              = each.value
   availability_zone       = element(data.aws_availability_zones.available.names, index(keys(var.private_subnets), each.key))
   map_public_ip_on_launch = true
-  
+
   tags = {
-    Name = "${each.key}-subnet"
+    name = "${each.key}-subnet"
   }
 }
 
