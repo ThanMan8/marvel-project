@@ -108,7 +108,7 @@ resource "aws_iam_role" "role" {
       {
         Effect = "Allow"
         Principal = {
-          Service = "airflow.amazonaws.com"
+          Service = "airflow-env.amazonaws.com"
         }
         Action = "sts:AssumeRole"
       }
