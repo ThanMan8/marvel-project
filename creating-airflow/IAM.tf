@@ -100,7 +100,7 @@ data "aws_iam_policy_document" "execution_role_policy" {
 
 
 resource "aws_iam_role" "role" {
-  name = "airflow-execution-role"
+  name = "airflow-execution-role-1"
   path = "/"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
