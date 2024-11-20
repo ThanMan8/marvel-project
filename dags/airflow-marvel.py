@@ -1,98 +1,119 @@
 from airflow import DAG
-from datetime import timedelta, datetime
 from airflow.providers.http.sensors.http import HttpSensor
-import json
 from airflow.providers.http.operators.http import SimpleHttpOperator
 from airflow.operators.python import PythonOperator
+from datetime import datetime, timedelta
 import pandas as pd
+import json
+import time
+from hashlib import md5
 
+# Marvel API credentials
+PUBLIC_KEY = "your_public_key"
+PRIVATE_KEY = "your_private_key"
 
+# Generate a hash for the Marvel API
+def generate_hash(ts):
+    return md5(f"{ts}{PRIVATE_KEY}{PUBLIC_KEY}".encode("utf8")).hexdigest()
 
+# Function to get characters and comics data
+def transform_load_comics_data(task_instance):
+    # Extract the character data
+    characters_data = task_instance.xcom_pull(task_ids="extract_characters_data")
+    
+    characters_comic_count = []
+    
+    for character in characters_data["data"]["results"]:
+        character_id = character["id"]
+        character_name = character["name"]
+        
+        # For each character, get the list of comics they are part of
+        ts = str(time.time())
+        hash_str = generate_hash(ts)
 
-def kelvin_to_fahrenheit(temp_in_kelvin):
-    temp_in_fahrenheit = (temp_in_kelvin - 273.15) * (9/5) + 32
-    return temp_in_fahrenheit
+        # Fetch comics data for the specific character
+        params = {
+            "apikey": PUBLIC_KEY,
+            "ts": ts,
+            "hash": hash_str,
+            "characters": character_id,  # Use character's ID to filter comics
+        }
 
+        response = task_instance.xcom_pull(task_ids="extract_comics_data", params=params)
+        
+        comics_count = response["data"]["count"]
+        
+        # Store character name and associated comics count
+        characters_comic_count.append({
+            "Character Name": character_name,
+            "Comics Count": comics_count
+        })
+    
+    # Convert to DataFrame
+    df = pd.DataFrame(characters_comic_count)
 
-def transform_load_data(task_instance):
-    data = task_instance.xcom_pull(task_ids="extract_weather_data")
-    city = data["name"]
-    weather_description = data["weather"][0]['description']
-    temp_farenheit = kelvin_to_fahrenheit(data["main"]["temp"])
-    feels_like_farenheit= kelvin_to_fahrenheit(data["main"]["feels_like"])
-    min_temp_farenheit = kelvin_to_fahrenheit(data["main"]["temp_min"])
-    max_temp_farenheit = kelvin_to_fahrenheit(data["main"]["temp_max"])
-    pressure = data["main"]["pressure"]
-    humidity = data["main"]["humidity"]
-    wind_speed = data["wind"]["speed"]
-    time_of_record = datetime.utcfromtimestamp(data['dt'] + data['timezone'])
-    sunrise_time = datetime.utcfromtimestamp(data['sys']['sunrise'] + data['timezone'])
-    sunset_time = datetime.utcfromtimestamp(data['sys']['sunset'] + data['timezone'])
-
-    transformed_data = {"City": city,
-                        "Description": weather_description,
-                        "Temperature (F)": temp_farenheit,
-                        "Feels Like (F)": feels_like_farenheit,
-                        "Minimun Temp (F)":min_temp_farenheit,
-                        "Maximum Temp (F)": max_temp_farenheit,
-                        "Pressure": pressure,
-                        "Humidty": humidity,
-                        "Wind Speed": wind_speed,
-                        "Time of Record": time_of_record,
-                        "Sunrise (Local Time)":sunrise_time,
-                        "Sunset (Local Time)": sunset_time                        
-                        }
-    transformed_data_list = [transformed_data]
-    df_data = pd.DataFrame(transformed_data_list)
-    aws_credentials = {"key":"*","secret": "*"}
+    # Save to S3
+    aws_credentials = {"key": "your_aws_access_key", "secret": "your_aws_secret_key"}
     now = datetime.now()
-    dt_string = now.strftime("%d%m%Y%H%M%S")
-    dt_string = 'current_weather_data_portland_' + dt_string
-    df_data.to_csv(f"s3://weatherapiairflowyoutubebucket-yml/{dt_string}.csv", index=False, storage_options=aws_credentials)
+    dt_string = now.strftime("%Y%m%d%H%M%S")
+    file_name = f"marvel_characters_comics_{dt_string}.csv"
+    df.to_csv(
+        f"s3://your_s3_bucket_name/{file_name}",
+        index=False,
+        storage_options=aws_credentials,
+    )
 
-
-
+# Default DAG arguments
 default_args = {
-    'owner': 'airflow',
-    'depends_on_past': False,
-    'start_date': datetime(2023, 1, 8),
-    'email': ['myemail@domain.com'],
-    'email_on_failure': False,
-    'email_on_retry': False,
-    'retries': 2,
-    'retry_delay': timedelta(minutes=2)
+    "owner": "airflow",
+    "depends_on_past": False,
+    "start_date": datetime(2024, 1, 1),
+    "email_on_failure": False,
+    "email_on_retry": False,
+    "retries": 2,
+    "retry_delay": timedelta(minutes=5),
 }
 
+# Define the DAG
+with DAG(
+    "marvel_characters_comics_dag",
+    default_args=default_args,
+    schedule_interval="@daily",
+    catchup=False,
+) as dag:
 
+    # Task 1: Check if the Marvel API is available
+    is_marvel_api_ready = HttpSensor(
+        task_id="is_marvel_api_ready",
+        http_conn_id="marvel_api",  # Define this connection in Airflow
+        endpoint="/v1/public/characters",  # Check if characters API is available
+    )
 
-with DAG('weather_dag',
-        default_args=default_args,
-        schedule_interval = '@daily',
-        catchup=False) as dag:
+    # Task 2: Extract characters data
+    extract_characters_data = SimpleHttpOperator(
+        task_id="extract_characters_data",
+        http_conn_id="marvel_api",
+        endpoint="/v1/public/characters",  # Fetch data from the characters endpoint
+        method="GET",
+        response_filter=lambda r: json.loads(r.text),
+        log_response=True,
+    )
 
+    # Task 3: Extract comics data for each character (filtered by character ID)
+    extract_comics_data = SimpleHttpOperator(
+        task_id="extract_comics_data",
+        http_conn_id="marvel_api",
+        endpoint="/v1/public/comics",  # Fetch data from the comics endpoint
+        method="GET",
+        response_filter=lambda r: json.loads(r.text),
+        log_response=True,
+    )
 
-        is_weather_api_ready = HttpSensor(
-        task_id ='is_weather_api_ready',
-        http_conn_id='weathermap_api',
-        endpoint='/data/2.5/weather?q=Portland&APPID=5031cde3d1a8b9469fd47e998d7aef79'
-        )
+    # Task 4: Transform and load the data into a CSV
+    transform_load_comics_data_task = PythonOperator(
+        task_id="transform_load_comics_data",
+        python_callable=transform_load_comics_data,
+    )
 
-
-        extract_weather_data = SimpleHttpOperator(
-        task_id = 'extract_weather_data',
-        http_conn_id = 'weathermap_api',
-        endpoint='/data/2.5/weather?q=Portland&APPID=5031cde3d1a8b9469fd47e998d7aef79',
-        method = 'GET',
-        response_filter= lambda r: json.loads(r.text),
-        log_response=True
-        )
-
-        transform_load_weather_data = PythonOperator(
-        task_id= 'transform_load_weather_data',
-        python_callable=transform_load_data
-        )
-
-
-
-
-        is_weather_api_ready >> extract_weather_data >> transform_load_weather_data
+    # Task sequence
+    is_marvel_api_ready >> extract_characters_data >> extract_comics_data >> transform_load_comics_data_task
