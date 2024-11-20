@@ -16,7 +16,7 @@ data "aws_availability_zones" "available" {}
 # RESOURCES
 ##################################################################################
 resource "aws_mwaa_environment" "managed_airflow" {
-  airflow_version = "2.2.2"
+  airflow_version = "2.10.1"
   airflow_configuration_options = {
     "core.load_default_connections"   = "false"
     "core.dag_file_processor_timeout" = 150
