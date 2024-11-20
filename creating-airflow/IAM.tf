@@ -118,7 +118,7 @@ resource "aws_iam_role" "role" {
 }
 
 resource "aws_iam_role_policy" "role-policy" {
-  name   = "airflow-execution-role-policy"
+  name   = "airflow-execution-role"
   role   = aws_iam_role.role.id
   policy = data.aws_iam_policy_document.execution_role_policy.json
 }
