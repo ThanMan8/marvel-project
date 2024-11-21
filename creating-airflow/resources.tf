@@ -132,7 +132,7 @@ resource "aws_mwaa_environment" "managed_airflow" {
 
   network_configuration {
     security_group_ids = [aws_security_group.managed_airflow_sg.id]
-    subnet_ids         = [for s in aws_subnet.private : s.id] # Using private subnets for MWAA
+    subnet_ids         = [aws_subnet.public.id] # Switch to the public subnet
   }
 
   source_bucket_arn               = aws_s3_bucket.managed-airflow-bucket.arn
