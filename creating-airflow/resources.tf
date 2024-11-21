@@ -80,6 +80,100 @@ resource "aws_route_table_association" "public_subnet_association" {
   route_table_id = aws_route_table.public_route_table.id
 }
 
+# Elastic IP for NAT Gateway
+resource "aws_eip" "nat_eip" {
+  vpc = true
+}
+# Create NAT Gateway in Public Subnet (to route traffic for private subnets)
+resource "aws_nat_gateway" "nat_gateway" {
+  allocation_id = aws_eip.nat_eip.id
+  subnet_id     = values(aws_subnet.public)[0].id # Picks the first subnet from the map.
+  tags = {
+    Name = "nat-gateway"
+  }
+}
+# Route Table for Private Subnets to route traffic through the NAT Gateway
+resource "aws_route_table" "private_route_table" {
+  vpc_id = aws_vpc.vpc-airflow.id
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.nat_gateway.id
+  }
+  tags = {
+    Name = "private-route-table"
+  }
+}
+# Associate Route Table with Private Subnets
+resource "aws_route_table_association" "private_route_association" {
+  for_each       = aws_subnet.private
+  subnet_id      = each.value.id
+  route_table_id = aws_route_table.private_route_table.id
+}
+
+resource "aws_lb" "public_alb" {
+  name               = "mwaa-public-alb"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb_sg.id]
+  subnets            = [for s in aws_subnet.public : s.id]
+
+  enable_deletion_protection = false
+  tags = {
+    Name = "mwaa-public-alb"
+  }
+}
+
+resource "aws_lb_target_group" "mwaa_tg" {
+  name        = "mwaa-tg"
+  port        = 80
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.vpc-airflow.id
+  target_type = "ip"
+}
+
+resource "aws_lb_listener" "http_listener" {
+  load_balancer_arn = aws_lb.public_alb.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.mwaa_tg.arn
+  }
+}
+
+resource "aws_security_group" "alb_sg" {
+  vpc_id = aws_vpc.vpc-airflow.id
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "alb-sg"
+  }
+}
+
+resource "aws_security_group_rule" "allow_from_alb" {
+  type                     = "ingress"
+  from_port                = 80
+  to_port                  = 80
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.alb_sg.id
+  security_group_id        = aws_security_group.managed_airflow_sg.id
+}
+
+
 # MWAA Environment Resource
 resource "aws_mwaa_environment" "managed_airflow" {
   airflow_version = "2.10.1"
@@ -97,7 +191,7 @@ resource "aws_mwaa_environment" "managed_airflow" {
 
   network_configuration {
     security_group_ids = [aws_security_group.managed_airflow_sg.id]
-    subnet_ids         = [for s in aws_subnet.public : s.id] # Use both public subnets
+    subnet_ids         = [for s in aws_subnet.private : s.id] # Use both public subnets
   }
 
   source_bucket_arn               = aws_s3_bucket.managed-airflow-bucket.arn
