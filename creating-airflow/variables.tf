@@ -40,8 +40,10 @@ variable "private_subnets" {
   }
 }
 
-variable "public_subnet_cidr" {
-  description = "CIDR block for the public subnet"
-  type        = string
-  default     = "10.192.10.0/24" # Example CIDR block; adjust as needed
+variable "public_subnets" {
+  type = map(string)
+  default = {
+    public-1 = "10.192.10.0/24"
+    public-2 = "10.192.11.0/24"
+  }
 }

@@ -25,13 +25,14 @@ resource "aws_vpc" "vpc-airflow" {
 
 # Public Subnet (for internet access)
 resource "aws_subnet" "public" {
+  for_each                = var.public_subnets
   vpc_id                  = aws_vpc.vpc-airflow.id
-  cidr_block              = var.public_subnet_cidr
-  availability_zone       = element(data.aws_availability_zones.available.names, 0)
+  cidr_block              = each.value
+  availability_zone       = element(data.aws_availability_zones.available.names, index(keys(var.public_subnets), each.key))
   map_public_ip_on_launch = true
 
   tags = {
-    name = "public-subnet"
+    name = "${each.key}-subnet"
   }
 }
 
@@ -73,47 +74,11 @@ resource "aws_route_table" "public_route_table" {
 
 # Associate Route Table with Public Subnet
 resource "aws_route_table_association" "public_subnet_association" {
-  subnet_id      = aws_subnet.public.id
-  route_table_id = aws_route_table.public_route_table.id
-}
-
-# Elastic IP for NAT Gateway
-resource "aws_eip" "nat_eip" {
-  vpc = true
-}
-
-# Create NAT Gateway in Public Subnet (to route traffic for private subnets)
-resource "aws_nat_gateway" "nat_gateway" {
-  allocation_id = aws_eip.nat_eip.id
-  subnet_id     = aws_subnet.public.id
-
-  tags = {
-    Name = "nat-gateway"
-  }
-}
-
-# Route Table for Private Subnets to route traffic through the NAT Gateway
-resource "aws_route_table" "private_route_table" {
-  vpc_id = aws_vpc.vpc-airflow.id
-
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.nat_gateway.id
-  }
-
-  tags = {
-    Name = "private-route-table"
-  }
-}
-
-# Associate Route Table with Private Subnets
-resource "aws_route_table_association" "private_route_association" {
-  for_each = aws_subnet.private
+  for_each = aws_subnet.public
 
   subnet_id      = each.value.id
-  route_table_id = aws_route_table.private_route_table.id
+  route_table_id = aws_route_table.public_route_table.id
 }
-
 
 # MWAA Environment Resource
 resource "aws_mwaa_environment" "managed_airflow" {
@@ -132,7 +97,7 @@ resource "aws_mwaa_environment" "managed_airflow" {
 
   network_configuration {
     security_group_ids = [aws_security_group.managed_airflow_sg.id]
-    subnet_ids         = [aws_subnet.public.id] # Switch to the public subnet
+    subnet_ids         = [for s in aws_subnet.public : s.id] # Use both public subnets
   }
 
   source_bucket_arn               = aws_s3_bucket.managed-airflow-bucket.arn
